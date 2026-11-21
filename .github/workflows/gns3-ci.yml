@@ -1,0 +1,48 @@
+name: GNS3 SD-WAN CI
+
+# Builds a new GNS3 project, sets up the SD-WAN LAN on a fresh CPE and tests
+# connectivity (see ci/README.md).
+#
+# The GNS3 server is only reachable inside the lab network, so this job needs a
+# self-hosted runner with the label "gns3" on a machine in that network.
+# Requirements on the runner: Python 3.9+ on PATH (no extra packages).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+# The lab server is shared: never run two CI projects at the same time.
+concurrency:
+  group: gns3-lab
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  lan-connectivity:
+    runs-on: [self-hosted, gns3]
+    timeout-minutes: 60
+    env:
+      # Set these as repository variables/secrets (Settings -> Secrets and variables -> Actions).
+      GNS3_URL: ${{ vars.GNS3_URL }}
+      # Disposable project that is deleted and rebuilt on every run. Required:
+      # the job fails if unset, and protected lab projects are refused.
+      GNS3_PROJECT_NAME: ${{ vars.GNS3_PROJECT_NAME }}
+      GNS3_USER: ${{ secrets.GNS3_USER }}
+      GNS3_PASSWORD: ${{ secrets.GNS3_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # On a Linux runner without a "python" command, change this to python3.
+      - name: Build GNS3 project, set up SD-WAN LAN, test connectivity
+        run: python ci/gns3_ci.py --after delete
+
+      - name: Upload console logs and JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gns3-ci-artifacts
+          path: ci/artifacts/

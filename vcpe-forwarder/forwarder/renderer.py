@@ -99,15 +99,16 @@ class Renderer:
         return plan
 
     def render_runtime_services(self, current: ForwarderState, revision: str) -> RenderPlan:
-        """Reconcile ephemeral service runtime without replaying the dataplane.
-
-        state.json is persistent, while dnsmasq processes, pid files and the active
-        /app/etc/forwarder/dnsmasq configs are runtime artifacts.  Re-render only
-        the services phase so a Forwarder/container restart can restore DHCP without
-        touching interfaces, WireGuard, routing or nftables.
-        """
+        """Restore configured bridges and their ports before starting LAN services."""
         plan = RenderPlan(revision=revision)
+        bridge_commands = self._render_bridges(current, current)
+        for bridge in current.bridges.values():
+            for member in bridge.members:
+                interface = current.interfaces.get(member)
+                if interface:
+                    bridge_commands.append(f"ip link set dev {member} {interface.admin_state}")
         plan.phases = {
+            "bridges": bridge_commands,
             "services": self._render_services(current, current, revision, plan),
         }
         return plan
@@ -267,6 +268,14 @@ class Renderer:
                 commands.append(f"ip link set dev {removed} nomaster || true")
             for member in sorted(new_members):
                 commands.append(f"ip link set dev {member} master {bridge_id}")
+            interface = current.interfaces.get(bridge_id)
+            if interface:
+                old_interface = previous.interfaces.get(bridge_id)
+                old_addresses = set(old_interface.addresses) if old_interface else set()
+                for address in sorted(old_addresses - set(interface.addresses)):
+                    commands.append(f"ip address del {address} dev {bridge_id} 2>/dev/null || true")
+                for address in interface.addresses:
+                    commands.append(f"ip address replace {address} dev {bridge_id}")
         return commands
 
     def _render_interfaces(self, current: ForwarderState) -> list[str]:

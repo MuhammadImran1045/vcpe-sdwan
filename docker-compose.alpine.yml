@@ -1,0 +1,17 @@
+# Override for an Alpine Linux CPE (GNS3 "Alpine Linux Virt" template).
+# Alpine names the NICs eth0/eth1/eth2 instead of ens4/ens5/ens6:
+#   eth0 = UPL1 (NAT2), eth1 = UPL2 (NAT3), eth2 = LAN (Switch1)
+#
+# Use together with the main file:
+#   docker compose -f docker-compose.yml -f docker-compose.alpine.yml up -d
+
+services:
+  vcpe-forwarder:
+    environment:
+      - 'WAN_LINK_MAP_JSON={"UPL1":"eth0","UPL2":"eth1"}'
+      # forwarder-udhcpc-script keeps the host's management default route on this WAN
+      - MANAGEMENT_WAN_INTERFACE=eth0
+
+  vcpe-monitoring:
+    environment:
+      - 'WAN_LINK_MAP_JSON={"UPL1":"eth0","UPL2":"eth1"}'
